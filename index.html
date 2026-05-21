@@ -51,13 +51,20 @@ body{background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSyst
 
 /* TOPBAR */
 .topbar{padding:calc(var(--safe-top) + 12px) 20px 0;flex-shrink:0}
-.topbar-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.topbar-row{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:4px}
 .app-name{font-size:18px;font-weight:700;color:var(--t1);outline:none;cursor:pointer;border-bottom:1px solid transparent;transition:border-color 0.2s;-webkit-user-select:text;user-select:text}
 .app-name[contenteditable=true]{border-bottom-color:var(--bdr2)}
 .app-tagline{font-size:12px;color:var(--t3);outline:none;cursor:pointer;line-height:1.5;-webkit-user-select:text;user-select:text;margin-bottom:2px}
 .app-tagline[contenteditable=true]{color:var(--t2)}
-.topbar-btns{display:flex;gap:6px}
+.topbar-btns{display:flex;gap:6px;align-items:flex-start;flex-shrink:0}
 .hdr-btn{background:none;border:1px solid var(--bdr2);border-radius:16px;padding:4px 10px;font-size:11px;color:var(--t3);cursor:pointer;font-family:inherit;white-space:nowrap}
+.more-wrap{position:relative}
+.more-menu{position:absolute;right:0;top:30px;display:none;min-width:108px;background:var(--bg);border:1px solid var(--bdr);border-radius:12px;padding:6px;box-shadow:0 10px 24px rgba(0,0,0,0.12);z-index:120}
+.more-menu.show{display:block}
+.more-item{display:block;width:100%;border:none;background:none;color:var(--t2);font-size:12px;font-family:inherit;text-align:left;padding:8px 9px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.more-item:active{background:var(--bg2)}
+.dark .more-menu{background:var(--bg2)}
+@media(max-width:360px){.topbar{padding-left:16px;padding-right:16px}.hdr-btn{padding:4px 8px}.app-name{font-size:17px}}
 
 /* NAV */
 .nav{display:flex;padding:12px 20px 0;border-bottom:0.5px solid var(--bdr);flex-shrink:0}
@@ -312,11 +319,15 @@ body{background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSyst
       <div class="app-name" id="app-name" contenteditable="false" spellcheck="false">私角落</div>
       <div class="topbar-btns">
         <button class="hdr-btn" id="poster-btn">今日海报</button>
-        <button class="hdr-btn" id="export-btn">导出</button>
-        <button class="hdr-btn" id="theme-btn">夜间</button>
         <button class="hdr-btn" id="sync-btn">同步</button>
-        <button class="hdr-btn" id="clear-local-btn">清缓存</button>
-        <button class="hdr-btn" id="logout-btn">退出</button>
+        <div class="more-wrap">
+          <button class="hdr-btn" id="more-btn">更多</button>
+          <div class="more-menu" id="more-menu">
+            <button class="more-item" id="export-btn">导出</button>
+            <button class="more-item" id="clear-local-btn">清缓存</button>
+            <button class="more-item" id="logout-btn">退出</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="app-tagline" id="app-tagline" contenteditable="false" spellcheck="false">不用组织语言，先写下来再说。</div>
@@ -497,7 +508,7 @@ const MOODS=[
   {w:'满怀希望',d:'感觉接下来会好的'},
   {w:'幸福',d:'此刻很好，很满足'}
 ];
-const LIFE_TAGS=['情绪','思考','日常','灵感','工作','健康','人际'];
+const LIFE_TAGS=['情绪','思考','日常','灵感','工作','健康','人际','备忘'];
 const LZ_TAGS=['舞台','演唱会','综艺','采访','衣品','日常','心动'];
 const MEMO_TYPES=['直播','舞台','日常','综艺','采访','其它'];
 const FAZE_PH=['啊啊啊啊啊……','这个瞬间为什么这么戳我……','我又开始上头了','刚刚那个眼神真的……','先记下来再说','怎么可以这么好看','我真的不行了','今天为什么这么讨厌……','说好的不上头的'];
@@ -528,6 +539,9 @@ function safeHttpUrl(url){
   const trimmed=url.trim();
   if(!/^https?:\/\//i.test(trimmed))return'';
   return encodeURI(trimmed).replace(/"/g,'%22').replace(/'/g,'%27');
+}
+function entryTags(e){
+  return e&&e.tags&&e.tags.length?e.tags:['备忘'];
 }
 function savedImgHtml(src,cls,type,id,index){
   const safe=safeImgSrc(src);
@@ -773,10 +787,9 @@ function clearLocalCache(){
   setTimeout(()=>location.reload(),700);
 }
 
-function applyTheme(t){
-  document.getElementById('app').classList.toggle('dark',t==='dark');
-  document.getElementById('theme-btn').textContent=t==='dark'?'日间':'夜间';
-  document.getElementById('theme-color-meta').content=t==='dark'?'#1c1c1e':'#ffffff';
+function applyTheme(){
+  document.getElementById('app').classList.remove('dark');
+  document.getElementById('theme-color-meta').content='#ffffff';
 }
 function flashEl(id,msg){
   const el=document.getElementById(id);if(!el)return;
@@ -949,7 +962,7 @@ document.getElementById('save-life-btn').addEventListener('click',async()=>{
   let imgs=[...pendingImgs];
   try{imgs=await uploadPendingImages(imgs,id,'life');}
   catch(e){console.warn(e);notify('图片上传失败，已保留本地图片');}
-  const entry={id,title,body,mood,moodWord:MOODS[mood].w,tags:[...lifeSelTags],imgs,ts:now,updated_at:now};
+  const entry={id,title,body,mood,moodWord:MOODS[mood].w,tags:lifeSelTags.length?[...lifeSelTags]:['备忘'],imgs,ts:now,updated_at:now};
   D.life.push(entry);
   if(!await persistOrCloudFallback(()=>{D.life=D.life.filter(e=>e.id!==entry.id);}))return;
   document.getElementById('life-body').value='';
@@ -1154,7 +1167,7 @@ function renderDayBox(){
       const body=document.getElementById('backfill-ta').value.trim();if(!body)return;
       const title=body.slice(0,16)+(body.length>16?'…':'');
       const bfDate=new Date(selDay.getFullYear(),selDay.getMonth(),selDay.getDate(),23,59,0);
-      const entry={id:newId(),title,body,tags:[],imgs:[],ts:bfDate.getTime(),updated_at:Date.now(),_backfill:true};
+      const entry={id:newId(),title,body,tags:['备忘'],imgs:[],ts:bfDate.getTime(),updated_at:Date.now(),_backfill:true};
       D.life.push(entry);
       if(!persist()){D.life=D.life.filter(e=>e.id!==entry.id);storageFail();return;}
       document.getElementById('backfill-ta').value='';
@@ -1188,7 +1201,7 @@ function renderInsights(){
   const mc={};recentLife.forEach(e=>{const w=MOODS[e.mood].w;mc[w]=(mc[w]||0)+1;});
   const topMoods=Object.entries(mc).sort((a,b)=>b[1]-a[1]).slice(0,2).map(x=>x[0]);
   // Monthly tag: top 2
-  const tc={};[...monthLife,...monthLizhi].forEach(e=>(e.tags||[]).forEach(t=>{tc[t]=(tc[t]||0)+1;}));
+  const tc={};[...monthLife,...monthLizhi].forEach(e=>entryTags(e).forEach(t=>{tc[t]=(tc[t]||0)+1;}));
   const topTags=Object.entries(tc).sort((a,b)=>b[1]-a[1]).slice(0,2).map(x=>x[0]);
   const rm=monthLife.map(e=>e.mood??12);
   const avg=rm.length?Math.round(rm.reduce((a,b)=>a+b,0)/rm.length):12;
@@ -1218,7 +1231,7 @@ function getAllMonthData(){
 }
 
 function renderTagFilters(){
-  const allTags=['情绪','思考','日常','灵感','工作','健康','人际','追星'];
+  const allTags=['情绪','思考','日常','灵感','工作','健康','人际','备忘','追星'];
   const w=document.getElementById('tf-row');
   w.innerHTML='';
   allTags.forEach(t=>{
@@ -1243,8 +1256,8 @@ function renderHistList(){
     items=monthFaze.map(e=>({...e,_t:'faze'}));
   } else {
     items=[
-      ...monthLife.filter(e=>(e.tags||[]).includes(activeTag)).map(e=>({...e,_t:'life'})),
-      ...monthLizhi.filter(e=>(e.tags||[]).includes(activeTag)).map(e=>({...e,_t:'lizhi'}))
+      ...monthLife.filter(e=>entryTags(e).includes(activeTag)).map(e=>({...e,_t:'life'})),
+      ...monthLizhi.filter(e=>entryTags(e).includes(activeTag)).map(e=>({...e,_t:'lizhi'}))
     ];
   }
   items.sort((a,b)=>b.ts-a.ts);
@@ -1260,7 +1273,7 @@ function renderHistList(){
     const sentChip=e.sentiment?'<span class="hchip" style="color:'+(e.sentiment==='pos'?'#0A84FF':'var(--orange)')+'">'+(e.sentiment==='pos'?'💙 祯能量':'💢 负能量')+'</span>':'';
     const canEdit=e._t!=='faze';
     const actions='<div class="entry-actions">'+(canEdit?'<button class="act-btn" data-edit="1" data-id="'+e.id+'" data-type="'+e._t+'">编辑</button>':'')+'<button class="act-btn del" data-del="1" data-id="'+e.id+'" data-type="'+e._t+'">删除</button></div>';
-    div.innerHTML=dotHtml+'<div class="hist-content"><div class="hist-top"><span class="hist-tit">'+escapeHTML(e.title||e.body?.slice(0,20)||'')+'</span><span class="hist-meta">'+escapeHTML(fmtDate(e.ts)+((!e._backfill&&e.moodWord)?' · '+e.moodWord:''))+'</span></div>'+(e.body&&e.title?'<div class="hist-prev">'+escapeHTML(e.body)+'</div>':'')+'<div class="hist-chips">'+(e.tags||[]).map(t=>'<span class="hchip">'+escapeHTML(t)+'</span>').join('')+sentChip+'</div>'+imgs+'</div>'+actions;
+    div.innerHTML=dotHtml+'<div class="hist-content"><div class="hist-top"><span class="hist-tit">'+escapeHTML(e.title||e.body?.slice(0,20)||'')+'</span><span class="hist-meta">'+escapeHTML(fmtDate(e.ts)+((!e._backfill&&e.moodWord)?' · '+e.moodWord:''))+'</span></div>'+(e.body&&e.title?'<div class="hist-prev">'+escapeHTML(e.body)+'</div>':'')+'<div class="hist-chips">'+entryTags(e).map(t=>'<span class="hchip">'+escapeHTML(t)+'</span>').join('')+sentChip+'</div>'+imgs+'</div>'+actions;
     w.appendChild(div);
   });
   bindActions(w);bindSavedImages(w);
@@ -1508,7 +1521,7 @@ async function drawPoster(summary){
   ctx.strokeStyle=isDark?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.08)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,y);ctx.lineTo(W-80,y);ctx.stroke();y+=55;
   if(td.life.length){ctx.font=`500 24px -apple-system,'PingFang SC',sans-serif`;ctx.fillStyle=t3;ctx.fillText('今日记录',80,y);y+=44;td.life.slice(0,2).forEach(e=>{ctx.font=`300 30px Georgia,serif`;ctx.fillStyle=t2;const h=wrapText(ctx,e.body.slice(0,60)+(e.body.length>60?'…':''),80,y,W-160,52);y+=h+28;});}
   if(td.faze.length){y+=10;ctx.font=`500 24px -apple-system,'PingFang SC',sans-serif`;ctx.fillStyle=t3;ctx.fillText('今日发疯',80,y);y+=44;td.faze.slice(0,2).forEach(e=>{const fc=e.sentiment==='pos'?'#7DB87A':'#FF6B35';ctx.font=`300 30px Georgia,serif`;ctx.fillStyle=fc;const h=wrapText(ctx,e.body.slice(0,50)+(e.body.length>50?'…':''),80,y,W-160,52);y+=h+28;});}
-  const allTags=[...new Set([...td.life].flatMap(e=>e.tags||[]))];
+  const allTags=[...new Set([...td.life].flatMap(e=>entryTags(e)))];
   if(allTags.length){y+=16;ctx.font=`300 26px -apple-system,'PingFang SC',sans-serif`;ctx.fillStyle=t2;ctx.fillText(allTags.map(t=>'#'+t).join('  '),80,y);}
   ctx.strokeStyle=isDark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.07)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(80,H-110);ctx.lineTo(W-80,H-110);ctx.stroke();
   ctx.font=`300 24px -apple-system,'PingFang SC',sans-serif`;ctx.fillStyle=t3;ctx.fillText(td.date.toLocaleDateString('zh-CN'),80,H-70);ctx.textAlign='right';ctx.fillText(D.name||'私角落',W-80,H-70);ctx.textAlign='left';
@@ -1525,14 +1538,6 @@ document.getElementById('poster-btn').addEventListener('click',async()=>{
 document.getElementById('poster-close').addEventListener('click',()=>document.getElementById('poster-modal').classList.remove('show'));
 document.getElementById('poster-regen').addEventListener('click',async()=>{document.getElementById('poster-status').textContent='重新生成中…';const td=await getTodayData();const s=await genLocalSummary(td);await drawPoster(s);document.getElementById('poster-status').textContent='完成';});
 document.getElementById('poster-dl').addEventListener('click',()=>{const a=document.createElement('a');a.download=`私角落_${new Date().toLocaleDateString('zh-CN').replace(/\//g,'-')}.png`;a.href=document.getElementById('poster-canvas').toDataURL('image/png');a.click();});
-
-// THEME
-document.getElementById('theme-btn').addEventListener('click',()=>{
-  const prev=D.theme;
-  D.theme=D.theme==='dark'?'light':'dark';
-  applyTheme(D.theme);
-  if(!persist()){D.theme=prev;applyTheme(prev);storageFail();}
-});
 
 // NAV
 document.querySelectorAll('.nav-btn').forEach(btn=>{
@@ -1568,6 +1573,16 @@ document.getElementById('auth-login').addEventListener('click',async()=>{
   }catch(e){console.warn(e);notify('云端载入失败，已使用本地数据');}
 });
 document.getElementById('auth-password').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('auth-login').click();});
+document.getElementById('more-btn').addEventListener('click',e=>{
+  e.stopPropagation();
+  document.getElementById('more-menu').classList.toggle('show');
+});
+document.addEventListener('click',e=>{
+  const menu=document.getElementById('more-menu');
+  const wrap=document.querySelector('.more-wrap');
+  if(menu&&wrap&&!wrap.contains(e.target))menu.classList.remove('show');
+});
+document.querySelectorAll('.more-item').forEach(btn=>btn.addEventListener('click',()=>document.getElementById('more-menu').classList.remove('show')));
 document.getElementById('logout-btn').addEventListener('click',async()=>{
   const client=getSupabase();
   if(client)await client.auth.signOut();
