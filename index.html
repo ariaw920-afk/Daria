@@ -8,7 +8,8 @@
 <meta name="apple-mobile-web-app-title" content="私角落"/>
 <meta name="theme-color" content="#ffffff" id="theme-color-meta"/>
 <link rel="manifest" href="manifest.json"/>
-<link rel="apple-touch-icon" href="icons/icon-192.png"/>
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png"/>
 <title>私角落</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -481,6 +482,8 @@ body{background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSyst
       <button class="export-btn" id="exp-txt">导出为 TXT<span>纯文字，可直接阅读打印</span></button>
       <button class="export-btn" id="exp-json">导出文字 JSON<span>轻量备份，不包含图片</span></button>
       <button class="export-btn" id="exp-json-full">导出完整 JSON<span>包含压缩后的图片，文件会较大</span></button>
+      <button class="export-btn" id="import-json">导入 JSON 备份<span>恢复后会保存到本机并同步到云端</span></button>
+      <input type="file" id="import-json-file" accept="application/json,.json" style="display:none"/>
     </div>
   </div>
 </div>
@@ -582,6 +585,25 @@ function storageFail(){
 }
 function cloneData(){
   return JSON.parse(JSON.stringify(D));
+}
+function normalizeBackupData(raw){
+  const base={life:[],faze:[],lizhi:[],memo:[],marks:{},name:'私角落',tagline:'不用组织语言，先写下来再说。',theme:'light',_deleted:[],_updatedAt:Date.now()};
+  if(!raw||typeof raw!=='object')throw new Error('备份文件格式不正确');
+  const next=Object.assign(base,raw);
+  next.life=Array.isArray(next.life)?next.life:[];
+  next.faze=Array.isArray(next.faze)?next.faze:[];
+  next.lizhi=Array.isArray(next.lizhi)?next.lizhi:[];
+  next.memo=Array.isArray(next.memo)?next.memo:[];
+  next.marks=next.marks&&typeof next.marks==='object'?next.marks:{};
+  next.name=String(next.name||base.name).slice(0,100);
+  next.tagline=String(next.tagline||base.tagline).slice(0,100);
+  next.theme='light';
+  next._deleted=[];
+  next._updatedAt=Date.now();
+  next.life.forEach(e=>{if(!e.id)e.id=newId();if(!e.tags||!e.tags.length)e.tags=['备忘'];e.updated_at=Date.now();});
+  next.faze.forEach(e=>{if(!e.id)e.id=newId();e.updated_at=Date.now();});
+  next.memo.forEach(e=>{if(!e.id)e.id=newId();e.updated_at=Date.now();});
+  return next;
 }
 function isDesktopLike(){
   return window.matchMedia('(hover:hover)').matches;
@@ -1463,6 +1485,24 @@ document.getElementById('exp-txt').addEventListener('click',()=>{
   });
   const blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`私角落_${new Date().toLocaleDateString('zh-CN').replace(/\//g,'-')}.txt`;a.click();
+});
+document.getElementById('import-json').addEventListener('click',()=>document.getElementById('import-json-file').click());
+document.getElementById('import-json-file').addEventListener('change',async function(){
+  const file=this.files&&this.files[0];if(!file)return;
+  const ok=confirm('导入会用备份内容覆盖当前记录。建议先导出现有完整 JSON，确认继续吗？');
+  if(!ok){this.value='';return;}
+  try{
+    const raw=JSON.parse(await file.text());
+    const prev=cloneData();
+    D=normalizeBackupData(raw);
+    if(!persist(false)){D=prev;storageFail();this.value='';return;}
+    renderAll();
+    notify('备份已导入，正在同步到云端');
+    await syncToCloud();
+  }catch(e){
+    console.warn(e);
+    notify('导入失败，请确认 JSON 备份文件正确');
+  }finally{this.value='';}
 });
 
 // POSTER
