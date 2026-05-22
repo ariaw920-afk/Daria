@@ -430,7 +430,6 @@ body{background:var(--bg);color:var(--t1);font-family:-apple-system,BlinkMacSyst
       <div class="sec-lbl" id="life-review-label">生活</div>
       <div class="tf-row" id="tf-row"></div>
       <div id="hist-list"></div>
-      <div id="memo-section"></div>
       <div id="memo-filter-section"></div>
     </div>
 
@@ -1057,7 +1056,8 @@ document.getElementById('faze-pos').addEventListener('click',()=>saveFaze('pos')
 document.getElementById('faze-neg').addEventListener('click',()=>saveFaze('neg'));
 function renderFazeRecent(){
   const w=document.getElementById('faze-recent');
-  const items=D.faze.slice(-4).reverse();
+  const today=new Date();
+  const items=D.faze.filter(e=>isEntryOnDay(e,today,false)).sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,10);
   if(!items.length){w.innerHTML='';return;}
   w.innerHTML='';
   items.forEach(e=>{
@@ -1111,9 +1111,11 @@ document.getElementById('memo-add').addEventListener('click',async()=>{
 document.getElementById('memo-inp').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('memo-add').click();});
 function renderMemoList(){
   const w=document.getElementById('memo-list');
-  if(!D.memo.length){w.innerHTML='';return;}
+  const today=new Date();
+  const items=D.memo.filter(e=>isEntryOnDay(e,today,true)).sort((a,b)=>(b.updated_at||b.ts||0)-(a.updated_at||a.ts||0)).slice(0,10);
+  if(!items.length){w.innerHTML='';return;}
   w.innerHTML='';
-  D.memo.slice().reverse().slice(0,10).forEach(e=>{
+  items.forEach(e=>{
     const div=document.createElement('div');div.className='memo-it';
     const imgs=e.imgs&&e.imgs.length?'<div class="memo-imgs">'+e.imgs.slice(0,4).map((s,i)=>savedImgHtml(s,'memo-img-thumb','memo',e.id,i)).join('')+'</div>':'';
     const safeUrl=safeHttpUrl(e.url);
@@ -1130,20 +1132,28 @@ function renderCal(){
   const today=new Date();
   document.getElementById('cal-tit').textContent=`${calY} 年 ${calM+1} 月`;
   const dim=new Date(calY,calM+1,0).getDate(),sd=new Date(calY,calM,1).getDay();
-  const lifeMap={},fazeMap={};
+  const lifeMap={},fazeMap={},memoMap={};
   D.life.forEach(e=>{const d=new Date(e.ts);if(d.getFullYear()===calY&&d.getMonth()===calM){const k=d.getDate();if(!lifeMap[k]||e.mood>lifeMap[k].mood)lifeMap[k]=e;}});
   D.faze.forEach(e=>{const d=new Date(e.ts);if(d.getFullYear()===calY&&d.getMonth()===calM){const k=d.getDate();if(!fazeMap[k])fazeMap[k]=[];fazeMap[k].push(e);}});
+  D.memo.forEach(e=>{
+    [e.ts,e.updated_at].forEach(ts=>{
+      if(!ts)return;
+      const d=new Date(ts);
+      if(d.getFullYear()===calY&&d.getMonth()===calM){const k=d.getDate();memoMap[k]=true;}
+    });
+  });
   const DOW=['日','一','二','三','四','五','六'];
   let html=DOW.map(d=>`<div class="cdow">${d}</div>`).join('');
   for(let i=0;i<sd;i++)html+=`<div class="cday empty"></div>`;
   for(let i=1;i<=dim;i++){
     const isT=today.getFullYear()===calY&&today.getMonth()===calM&&today.getDate()===i;
     const isSel=selDay&&selDay.getFullYear()===calY&&selDay.getMonth()===calM&&selDay.getDate()===i;
-    const le=lifeMap[i],fe=fazeMap[i];
+    const le=lifeMap[i],fe=fazeMap[i],me=memoMap[i];
     let dots='<div class="cdots">';
     if(le)dots+='<div class="cdot-sm yellow"></div>';
     if(fe&&fe.some(x=>x.sentiment==='pos'))dots+='<div class="cdot-sm green"></div>';
     if(fe&&fe.some(x=>x.sentiment==='neg'))dots+='<div class="cdot-sm orange"></div>';
+    if(me)dots+='<div class="cdot-sm blue"></div>';
     dots+='</div>';
     const dateKey=calY+'-'+(calM+1)+'-'+i;
     const mark=D.marks&&D.marks[dateKey];
@@ -1180,26 +1190,35 @@ function renderDayBox(){
   const w=document.getElementById('day-box-wrap');
   if(!selDay){w.innerHTML='';return;}
   const isD=e=>{const d=new Date(e.ts);return d.getFullYear()===selDay.getFullYear()&&d.getMonth()===selDay.getMonth()&&d.getDate()===selDay.getDate();};
-  const life=D.life.filter(isD),faze=D.faze.filter(isD),lz=D.lizhi.filter(isD);
+  const life=D.life.filter(isD),faze=D.faze.filter(isD),lz=D.lizhi.filter(isD),memo=D.memo.filter(e=>isEntryOnDay(e,selDay,true));
   const all=[
     ...life.map(e=>({...e,_t:'life'})),
     ...faze.map(e=>({...e,_t:'faze'})),
-    ...lz.map(e=>({...e,_t:'lizhi'}))
-  ].sort((a,b)=>a.ts-b.ts);
+    ...lz.map(e=>({...e,_t:'lizhi'})),
+    ...memo.map(e=>({...e,_t:'memo'}))
+  ].sort((a,b)=>{
+    const ak=a._t==='memo'&&isSameDayTs(a.updated_at,selDay)?a.updated_at:a.ts;
+    const bk=b._t==='memo'&&isSameDayTs(b.updated_at,selDay)?b.updated_at:b.ts;
+    return ak-bk;
+  });
 
   const itemsHtml=all.map(e=>{
     const isBackfill=e._backfill;
     let dotHtml='';
     if(e._t==='life')dotHtml='<div class="'+(isBackfill?'dot-hollow yellow':'dot yellow')+'"></div>';
     else if(e._t==='faze')dotHtml='<div class="dot '+(e.sentiment==='pos'?'green':'orange')+'"></div>';
+    else if(e._t==='memo')dotHtml='<div class="mdot"></div>';
     else dotHtml='<div class="dot blue"></div>';
     const imgs=e.imgs&&e.imgs.length?'<div class="day-it-imgs">'+e.imgs.map((s,i)=>savedImgHtml(s,'day-it-img',e._t,e.id,i)).join('')+'</div>':'';
     const badge=isBackfill?'<span class="补-badge" style="margin-left:4px">补</span>':'';
     const moodSub=(!isBackfill&&e.moodWord)?'<span>'+e.moodWord+'</span>':'';
     const sentSub=e.sentiment?'<span>'+(e.sentiment==='pos'?'💙 祯能量':'💢 负能量')+'</span>':'';
-    const sub=(moodSub||sentSub)?((moodSub||sentSub)+badge):badge;
+    const memoSub=e._t==='memo'?'<span>瞬间收藏 · '+escapeHTML(e.type||'其它')+(e.updated_at&&isSameDayTs(e.updated_at,selDay)&&!isSameDayTs(e.ts,selDay)?' · 当天编辑':'')+'</span>':'';
+    const sub=(moodSub||sentSub||memoSub)?((moodSub||sentSub||memoSub)+badge):badge;
     const actions='<div class="entry-actions" style="opacity:1;flex-shrink:0"><button class="act-btn" data-edit="1" data-id="'+e.id+'" data-type="'+e._t+'">编辑</button><button class="act-btn del" data-del="1" data-id="'+e.id+'" data-type="'+e._t+'">删除</button></div>';
-    return'<div class="day-it">'+dotHtml+'<div class="day-it-content"><div class="day-it-text">'+escapeHTML(e.title||e.body?.slice(0,50)||'')+'</div>'+(sub?'<div class="day-it-sub">'+sub+'</div>':'')+(imgs||'')+'</div>'+actions+'</div>';
+    const mainText=e._t==='memo'?(e.text||e.url||'瞬间收藏'):(e.title||e.body?.slice(0,50)||'');
+    const url=e._t==='memo'&&e.url?'<div class="day-it-sub">'+escapeHTML(e.url.slice(0,80))+'</div>':'';
+    return'<div class="day-it">'+dotHtml+'<div class="day-it-content"><div class="day-it-text">'+escapeHTML(mainText)+'</div>'+(sub?'<div class="day-it-sub">'+sub+'</div>':'')+url+(imgs||'')+'</div>'+actions+'</div>';
   }).join('');
 
   // Backfill form
@@ -1244,8 +1263,8 @@ function renderDayBox(){
   // backfill-save now handled in renderDayBox
 }
 
-document.getElementById('cal-prev').addEventListener('click',()=>{calM--;if(calM<0){calM=11;calY--;}selDay=null;activeTag='';memoExpanded=false;window._activeMemoTag='';document.getElementById('day-box-wrap').innerHTML='';renderReview();});
-document.getElementById('cal-next').addEventListener('click',()=>{calM++;if(calM>11){calM=0;calY++;}selDay=null;activeTag='';memoExpanded=false;window._activeMemoTag='';document.getElementById('day-box-wrap').innerHTML='';renderReview();});
+document.getElementById('cal-prev').addEventListener('click',()=>{calM--;if(calM<0){calM=11;calY--;}selDay=null;activeTag='';histVisible=PAGE_SIZE;memoFilterVisible=PAGE_SIZE;window._activeMemoTag='';document.getElementById('day-box-wrap').innerHTML='';renderReview();});
+document.getElementById('cal-next').addEventListener('click',()=>{calM++;if(calM>11){calM=0;calY++;}selDay=null;activeTag='';histVisible=PAGE_SIZE;memoFilterVisible=PAGE_SIZE;window._activeMemoTag='';document.getElementById('day-box-wrap').innerHTML='';renderReview();});
 
 function renderInsights(){
   // Filter to current calendar month
@@ -1278,12 +1297,13 @@ function renderInsights(){
   ow.innerHTML=otd.length?`<div class="ot-lbl">往年今天</div>`+otd.slice(0,2).map(e=>`<div class="ot-item"><div class="ot-year">${new Date(e.ts).getFullYear()} 年</div><div class="ot-text">${escapeHTML(e.title||e.body?.slice(0,40)||'')}</div></div>`).join(''):'';
 }
 let activeTag='';
-let memoExpanded=false;
+const PAGE_SIZE=10;
+let histVisible=PAGE_SIZE,memoFilterVisible=PAGE_SIZE;
 
 function renderReview(){
   const searching=reviewSearchQuery.trim()||reviewSearchFilter!=='all';
   renderSearchResults();
-  ['review-cal-hd','cal-grid','day-box-wrap','ins-grid','on-today-wrap','life-review-label','tf-row','hist-list','memo-section','memo-filter-section'].forEach(id=>{
+  ['review-cal-hd','cal-grid','day-box-wrap','ins-grid','on-today-wrap','life-review-label','tf-row','hist-list','memo-filter-section'].forEach(id=>{
     const el=document.getElementById(id);
     if(el)el.style.display=searching?'none':'';
   });
@@ -1291,11 +1311,28 @@ function renderReview(){
   renderCal();renderInsights();renderTagFilters();renderHistList();renderMemoFilterSection();if(selDay)renderDayBox();
 }
 
+function isSameDayTs(ts,date){
+  if(!ts||!date)return false;
+  const d=new Date(ts);
+  return d.getFullYear()===date.getFullYear()&&d.getMonth()===date.getMonth()&&d.getDate()===date.getDate();
+}
+function isInMonthTs(ts,y,m){
+  if(!ts)return false;
+  const d=new Date(ts);
+  return d.getFullYear()===y&&d.getMonth()===m;
+}
+function isEntryOnDay(e,date,includeUpdated=false){
+  return isSameDayTs(e.ts,date)||(includeUpdated&&e.updated_at&&isSameDayTs(e.updated_at,date));
+}
+function isEntryInMonth(e,y,m,includeUpdated=false){
+  return isInMonthTs(e.ts,y,m)||(includeUpdated&&e.updated_at&&isInMonthTs(e.updated_at,y,m));
+}
+
 function getAllMonthData(){
   const monthLife=D.life.filter(e=>{const d=new Date(e.ts);return d.getFullYear()===calY&&d.getMonth()===calM;});
   const monthLizhi=D.lizhi.filter(e=>{const d=new Date(e.ts);return d.getFullYear()===calY&&d.getMonth()===calM;});
   const monthFaze=D.faze.filter(e=>{const d=new Date(e.ts);return d.getFullYear()===calY&&d.getMonth()===calM;});
-  const monthMemo=D.memo.filter(e=>{const d=new Date(e.ts);return d.getFullYear()===calY&&d.getMonth()===calM;});
+  const monthMemo=D.memo.filter(e=>isEntryInMonth(e,calY,calM,true));
   return{monthLife,monthLizhi,monthFaze,monthMemo};
 }
 
@@ -1354,6 +1391,7 @@ function renderTagFilters(){
     btn.textContent=t;
     btn.addEventListener('click',()=>{
       activeTag=activeTag===t?'':t;
+      histVisible=PAGE_SIZE;
       renderTagFilters();
       renderHistList();
     });
@@ -1364,7 +1402,7 @@ function renderTagFilters(){
 function renderHistList(){
   const{monthLife,monthLizhi,monthFaze}=getAllMonthData();
   const w=document.getElementById('hist-list');
-  if(!activeTag){w.innerHTML='';renderMemoSection();return;}
+  if(!activeTag){w.innerHTML='';return;}
   let items=[];
   if(activeTag==='追星'){
     items=monthFaze.map(e=>({...e,_t:'faze'}));
@@ -1375,9 +1413,10 @@ function renderHistList(){
     ];
   }
   items.sort((a,b)=>b.ts-a.ts);
-  if(!items.length){w.innerHTML='<div class="empty-hint">这个月还没有相关记录</div>';renderMemoSection();return;}
+  if(!items.length){w.innerHTML='<div class="empty-hint">这个月还没有相关记录</div>';return;}
   w.innerHTML='';
-  items.forEach(e=>{
+  const visibleItems=items.slice(0,histVisible);
+  visibleItems.forEach(e=>{
     const div=document.createElement('div');div.className='hist-it';
     let dotHtml='';
     if(e._t==='life')dotHtml='<div class="'+(e._backfill?'dot-hollow yellow':'dot yellow')+'"></div>';
@@ -1389,23 +1428,14 @@ function renderHistList(){
     div.innerHTML=dotHtml+'<div class="hist-content"><div class="hist-top"><span class="hist-tit">'+escapeHTML(e.title||e.body?.slice(0,20)||'')+'</span><span class="hist-meta">'+escapeHTML(fmtDate(e.ts)+((!e._backfill&&e.moodWord)?' · '+e.moodWord:''))+'</span></div>'+(e.body&&e.title?'<div class="hist-prev">'+escapeHTML(e.body)+'</div>':'')+'<div class="hist-chips">'+entryTags(e).map(t=>'<span class="hchip">'+escapeHTML(t)+'</span>').join('')+sentChip+'</div>'+imgs+'</div>'+actions;
     w.appendChild(div);
   });
+  if(items.length>histVisible){
+    const more=document.createElement('button');
+    more.className='small-btn';
+    more.textContent='加载更多';
+    more.addEventListener('click',()=>{histVisible+=PAGE_SIZE;renderHistList();});
+    w.appendChild(more);
+  }
   bindActions(w);bindSavedImages(w);
-  renderMemoSection();
-}
-
-function renderMemoSection(){
-  const memoWrap=document.getElementById('memo-section');
-  if(!memoWrap)return;
-  const{monthMemo}=getAllMonthData();
-  if(!monthMemo.length){memoWrap.innerHTML='';return;}
-  const headerHtml='<div class="sec-lbl" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" id="memo-toggle-btn">瞬间收藏<span style="font-size:12px;color:var(--t3)">'+(memoExpanded?'收起':'展开 '+monthMemo.length+' 条')+'</span></div>';
-  const listHtml=memoExpanded?'<div>'+monthMemo.slice().reverse().map(e=>{
-    const imgs=e.imgs&&e.imgs.length?'<div class="memo-imgs">'+e.imgs.map((s,i)=>savedImgHtml(s,'memo-img-thumb','memo',e.id,i)).join('')+'</div>':'';
-    return'<div class="memo-it"><div class="mdot"></div><div class="memo-txt" style="flex:1">'+escapeHTML(e.text)+(e.url?'<br><span class="memo-typ">'+escapeHTML(e.url.slice(0,32))+'</span>':'')+'<span class="memo-typ" style="margin-left:4px">'+escapeHTML(e.type)+'</span>'+imgs+'</div><div class="entry-actions"><button class="act-btn" data-edit="1" data-id="'+e.id+'" data-type="memo">编辑</button><button class="act-btn del" data-del="1" data-id="'+e.id+'" data-type="memo">删除</button></div></div>';
-  }).join('')+'</div>':'';
-  memoWrap.innerHTML=headerHtml+listHtml;
-  document.getElementById('memo-toggle-btn').addEventListener('click',()=>{memoExpanded=!memoExpanded;renderMemoSection();});
-  bindActions(memoWrap);bindSavedImages(memoWrap);
 }
 
 function renderMemoFilterSection(){
@@ -1427,6 +1457,7 @@ function renderMemoFilterSection(){
   wrap.querySelectorAll('.memo-tf').forEach(btn=>{
     btn.addEventListener('click',()=>{
       window._activeMemoTag=window._activeMemoTag===btn.dataset.tag?'':btn.dataset.tag;
+      memoFilterVisible=PAGE_SIZE;
       renderMemoFilterSection();
     });
   });
@@ -1436,12 +1467,20 @@ function renderMemoFilterSection(){
   const filtered=monthMemo.filter(e=>e.type===window._activeMemoTag);
   if(!filtered.length){listWrap.innerHTML='<div class="empty-hint">这个月还没有相关收藏</div>';return;}
   listWrap.innerHTML='';
-  filtered.slice().reverse().forEach(e=>{
+  const sorted=filtered.slice().sort((a,b)=>(b.updated_at||b.ts||0)-(a.updated_at||a.ts||0));
+  sorted.slice(0,memoFilterVisible).forEach(e=>{
     const div=document.createElement('div');div.className='memo-it';
     const imgs=e.imgs&&e.imgs.length?'<div class="memo-imgs">'+e.imgs.map((s,i)=>savedImgHtml(s,'memo-img-thumb','memo',e.id,i)).join('')+'</div>':'';
     div.innerHTML='<div class="mdot"></div><div class="memo-txt" style="flex:1"><div>'+escapeHTML(e.text)+(e.url?'<br><span class="memo-typ">'+escapeHTML(e.url.slice(0,32))+'</span>':'')+'</div>'+imgs+'</div><div class="entry-actions"><button class="act-btn" data-edit="1" data-id="'+e.id+'" data-type="memo">编辑</button><button class="act-btn del" data-del="1" data-id="'+e.id+'" data-type="memo">删除</button></div>';
     listWrap.appendChild(div);
   });
+  if(sorted.length>memoFilterVisible){
+    const more=document.createElement('button');
+    more.className='small-btn';
+    more.textContent='加载更多';
+    more.addEventListener('click',()=>{memoFilterVisible+=PAGE_SIZE;renderMemoFilterSection();});
+    listWrap.appendChild(more);
+  }
   bindActions(listWrap);bindSavedImages(listWrap);
 }
 
@@ -1713,7 +1752,7 @@ document.querySelectorAll('.nav-btn').forEach(btn=>{
     document.getElementById('tab-'+tab).classList.add('active');
     if(tab==='life'&&window.matchMedia('(hover:hover)').matches)setTimeout(()=>document.getElementById('life-body').focus(),60);
     if(tab==='star'){renderFazeRecent();renderMemoList();if(window.matchMedia('(hover:hover)').matches)setTimeout(()=>document.getElementById('faze-ta').focus(),60);}
-    if(tab==='review'){activeTag='';memoExpanded=false;window._activeMemoTag='';renderReview();}
+    if(tab==='review'){activeTag='';histVisible=PAGE_SIZE;memoFilterVisible=PAGE_SIZE;window._activeMemoTag='';renderReview();}
   });
 });
 
